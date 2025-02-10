@@ -15,7 +15,7 @@ from .services.sms_service import send_temporary_code
 
 
 # Custom manager for CustomUser model
-class CustomUserManeger(BaseUserManager):
+class CustomUserManager(BaseUserManager):
     def create_customer(
         self,
         first_name=None,
@@ -71,7 +71,7 @@ class CustomUserManeger(BaseUserManager):
         store_name=None,
         store_logo=None,
         active_mode=True,
-        store_industry=None,
+        industry=None,
         store_description=None,
         **extra_fields,
     ):
@@ -85,8 +85,8 @@ class CustomUserManeger(BaseUserManager):
             raise ValueError("The 'store_name' must be set")
         elif not password:
             raise ValueError("The 'password' must be set")
-        elif not store_industry:
-            raise ValueError("The 'store_industry' must be set")
+        elif not industry:
+            raise ValueError("The 'industry' must be set")
 
         if self.model.objects.filter(username=username).exists():
             raise ValueError(f"The 'username' {username} is already taken.")
@@ -105,7 +105,7 @@ class CustomUserManeger(BaseUserManager):
             store_logo=store_logo,
             username=username,
             active_mode=active_mode,
-            store_industry=store_industry,
+            industry=industry,
             store_description=store_description,
             **extra_fields,
         )
@@ -155,14 +155,6 @@ class CustomUserManeger(BaseUserManager):
         send_temporary_code(phone_number=phone_number, code=temporary_password)
         user.save(using=self._db)
         return user
-
-
-# Store Industry Model
-class Store_Industry(models.Model):
-    store_industry = models.CharField(max_length=50)
-
-    def __str__(self):
-        return self.store_industry
 
 
 # Validator for file size
@@ -218,8 +210,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True, null=True, blank=True)
     user_type = models.CharField(max_length=50, choices=USER_TYPES, default="customer")
     active_mode = models.BooleanField(default=True)
-    store_industry = models.ForeignKey(
-        "Store_Industry", on_delete=models.CASCADE, null=True, blank=True
+    industry = models.ForeignKey(
+        "Product.Industry", on_delete=models.CASCADE, null=True, blank=True
     )
     store_description = models.TextField(null=True, blank=True)
 
@@ -240,7 +232,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         related_query_name="customuser",
     )
 
-    objects = CustomUserManeger()
+    objects = CustomUserManager()
 
     USERNAME_FIELD = "username"
     REQUIRED_FIELDS = ["first_name", "last_name"]
