@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Product
+from .models import Product, Industry
 
 
 # Serializer for full product details
@@ -23,3 +23,11 @@ class ProductSerializerShow(serializers.ModelSerializer):
             "type_of_file",  # File type, relevant for digital products (e.g., PDF, ZIP)
             "size",  # Size of the file for digital products, relevant for digital products only
         ]
+
+
+# Serializer for the Industry model
+# Converts Industry model instances to JSON format and vice versa
+class IndustrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Industry
+        fields = "__all__"  # Includes all fields from the Industry model
