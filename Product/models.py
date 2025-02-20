@@ -38,6 +38,7 @@ class Product(models.Model):
         blank=True,  # Links product to an industry (optional)
     )
     title = models.CharField(max_length=150)  # Product title
+    price = models.DecimalField(decimal_places=2)  # Product price
     descriptions = models.TextField()  # Product description
     product_type = models.CharField(
         max_length=10,
@@ -67,13 +68,14 @@ class Product(models.Model):
         "TypeOfFile", on_delete=models.CASCADE, null=True, blank=True
     )  # Type of file (e.g., PDF, ZIP) for digital products
 
-    def create_physical(self, title, description, length, width, color, weight):
+    def create_physical(self, title, description, length, width, color, weight, price):
         """
         Method to create a physical product
         Accepts parameters to define physical product attributes
         """
         if self.product_type == "Physical":
             self.title = title
+            self.price = price
             self.descriptions = description
             self.product_type = "Physical"  # Sets the product type to Physical
             self.length = length
@@ -84,13 +86,14 @@ class Product(models.Model):
             size = None
             self.save()  # Saves the product to the database
 
-    def create_digital(self, title, description, size, type_of_file):
+    def create_digital(self, title, description, size, type_of_file, price):
         """
         Method to create a digital product
         Accepts parameters to define digital product attributes
         """
         if self.product_type == "Digital":
             self.title = title
+            self.price = price
             self.descriptions = description
             self.product_type = "Digital"  # Sets the product type to Digital
             self.size = size

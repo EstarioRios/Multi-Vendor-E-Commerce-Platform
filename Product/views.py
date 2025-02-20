@@ -105,3 +105,30 @@ def products_sort_show(request):
             {"error": "'product_type' and 'industry' are required parameters."},
             status=400,
         )
+
+
+@api_view(["GET"])  # Defines a GET API endpoint
+def product_detail(request):
+    product_id = request.query_params.get(
+        "product_id"
+    )  # Retrieves product_id from query parameters
+
+    if product_id:
+        product_detail = Product.objects.filter(
+            id=product_id
+        ).first()  # Fetches the product by ID
+        if product_detail:
+            product_detail_serialized = ProductSerializerFull(
+                product_detail
+            )  # Serializes product data
+            return Response(
+                {"product_detail": product_detail_serialized.data}, status=200
+            )  # Returns product details
+        else:
+            return Response(
+                {"error": "Product not found"}, status=404
+            )  # Returns error if product does not exist
+
+    return Response(
+        {"error": "product_id is required"}, status=400
+    )  # Returns error if product_id is missing

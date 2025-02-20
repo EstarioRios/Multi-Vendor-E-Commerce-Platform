@@ -22,6 +22,8 @@ class ProductSerializerShow(serializers.ModelSerializer):
             "product_type",  # Product type, indicating whether the product is physical or digital
             "type_of_file",  # File type, relevant for digital products (e.g., PDF, ZIP)
             "size",  # Size of the file for digital products, relevant for digital products only
+            "id",  # Unique identifier for the product, used for referencing specific products
+            "price",  # Product price, representing the cost of the item
         ]
 
 
