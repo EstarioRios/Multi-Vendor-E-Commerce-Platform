@@ -31,9 +31,43 @@ def products_sort_show(request):
     # Extracting the 'product_type' and 'industry' from the query parameters
     product_type = request.query_params.get("product_type")
     industry = request.query_params.get("industry")
+    title = request.query_params.get("title")
+
+    if all([product_type, industry, title]):
+        if str(product_type).lower() == "physical":
+            # Filtering physical products by 'product_type' and 'industry'
+            products_list = Product.objects.filter(
+                product_type=product_type, industry=industry, title__icontains=title
+            )
+            # Serializing the list of products and returning it in the response
+            serialized_data = ProductSerializerShow(products_list, many=True)
+            return Response({"products": serialized_data.data}, status=200)
+
+        elif str(product_type).lower() == "digital":
+            # Filtering digital products by 'product_type' and 'industry'
+            type_of_file = request.query_params.get("type_of_file")
+
+            products_list = Product.objects.filter(
+                product_type=product_type,
+                industry=industry,
+                type_of_file=type_of_file,
+                title__icontains=title,
+            )
+            # Serializing the list of products and returning it in the response
+            serialized_data = ProductSerializerShow(products_list, many=True)
+            return Response({"products": serialized_data.data}, status=200)
+
+        # If the product_type is neither 'physical' nor 'digital'
+        else:
+            return Response(
+                {
+                    "error": "Invalid 'product_type' provided. Must be 'Physical' or 'Digital'."
+                },
+                status=400,
+            )
 
     # Checking if both 'product_type' and 'industry' are provided
-    if product_type and industry:
+    elif product_type and industry:
         # Handling different types of products based on 'product_type'
         if str(product_type).lower() == "physical":
             # Filtering physical products by 'product_type' and 'industry'
@@ -46,8 +80,12 @@ def products_sort_show(request):
 
         elif str(product_type).lower() == "digital":
             # Filtering digital products by 'product_type' and 'industry'
+            type_of_file = request.query_params.get("type_of_file")
+
             products_list = Product.objects.filter(
-                product_type=product_type, industry=industry
+                product_type=product_type,
+                industry=industry,
+                type_of_file=type_of_file,
             )
             # Serializing the list of products and returning it in the response
             serialized_data = ProductSerializerShow(products_list, many=True)
