@@ -102,3 +102,32 @@ class Product(models.Model):
 
     def __str__(self):
         return self.title  # Returns the product title when the object is printed
+
+
+# Model for storing images associated with a product
+class ProductImage(models.Model):
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name="images"
+    )  # Links product to its images (one-to-many relationship)
+    image = models.ImageField(
+        upload_to="product_images/"
+    )  # Stores the image file in the product_images folder
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True
+    )  # Records the date and time when the image was uploaded
+
+    def __str__(self):
+        return f"Image for {self.product.title}"  # String representation of the image
+
+
+# Model for setting the main image for a product
+class MainImage(models.Model):
+    product = models.OneToOneField(
+        Product, on_delete=models.CASCADE, related_name="main_image"
+    )  # Links a single product to its main image (one-to-one relationship)
+    product_image = models.ForeignKey(
+        ProductImage, on_delete=models.CASCADE, related_name="main_for"
+    )  # Links to the ProductImage that is designated as the main image
+
+    def __str__(self):
+        return f"Main image for {self.product.title}"  # String representation of the main image

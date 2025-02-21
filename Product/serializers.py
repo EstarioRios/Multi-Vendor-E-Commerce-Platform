@@ -1,5 +1,21 @@
 from rest_framework import serializers
-from .models import Product, Industry
+from .models import Product, Industry, MainImage, ProductImage
+
+
+# Serializer for the MainImage model (to show only the main image)
+class MainImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MainImage
+        fields = [
+            "product_image"
+        ]  # Only include the product_image field (which contains the main image)
+
+
+# Serializer for the ProductImage model (to show all images related to a product)
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ["image"]  # Include the image field to show all images of the product
 
 
 # Serializer for full product details
@@ -24,6 +40,7 @@ class ProductSerializerShow(serializers.ModelSerializer):
             "size",  # Size of the file for digital products, relevant for digital products only
             "id",  # Unique identifier for the product, used for referencing specific products
             "price",  # Product price, representing the cost of the item
+            "main_image",  # Show only the main image
         ]
 
 
