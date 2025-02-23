@@ -68,37 +68,53 @@ class Product(models.Model):
         "TypeOfFile", on_delete=models.CASCADE, null=True, blank=True
     )  # Type of file (e.g., PDF, ZIP) for digital products
 
-    def create_physical(self, title, description, length, width, color, weight, price):
+    @classmethod
+    def create_physical(cls, title, description, length, width, color, weight, price):
         """
-        Method to create a physical product
-        Accepts parameters to define physical product attributes
+        Class method to create a physical product
         """
-        if self.product_type == "Physical":
-            self.title = title
-            self.price = price
-            self.descriptions = description
-            self.product_type = "Physical"  # Sets the product type to Physical
-            self.length = length
-            self.width = width
-            self.color = color
-            self.weight = weight
-            type_of_file = None
-            size = None
-            self.save()  # Saves the product to the database
+        return cls.objects.create(
+            title=title,
+            price=price,
+            descriptions=description,
+            product_type="Physical",
+            length=length,
+            width=width,
+            color=color,
+            weight=weight,
+            size=None,
+            type_of_file=None,
+        )
 
-    def create_digital(self, title, description, size, type_of_file, price):
+    @classmethod
+    def create_digital(cls, title, description, size, type_of_file, price):
+        """
+        Class method to create a digital product
+        """
+        return cls.objects.create(
+            title=title,
+            price=price,
+            descriptions=description,
+            product_type="Digital",
+            size=size,
+            type_of_file=type_of_file,
+            length=None,
+            width=None,
+            color=None,
+            weight=None,
+        )
         """
         Method to create a digital product
         Accepts parameters to define digital product attributes
         """
-        if self.product_type == "Digital":
-            self.title = title
-            self.price = price
-            self.descriptions = description
-            self.product_type = "Digital"  # Sets the product type to Digital
-            self.size = size
-            self.type_of_file = type_of_file
-            self.save()  # Saves the product to the database
+
+        self.title = title
+        self.price = price
+        self.descriptions = description
+        self.product_type = "Digital"  # Sets the product type to Digital
+        self.size = size
+        self.type_of_file = type_of_file
+        self.save()  # Saves the product to the database
 
     def __str__(self):
         return self.title  # Returns the product title when the object is printed
