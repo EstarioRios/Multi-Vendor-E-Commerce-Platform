@@ -38,7 +38,11 @@ class Product(models.Model):
         blank=True,  # Links product to an industry (optional)
     )
     title = models.CharField(max_length=150)  # Product title
-    price = models.DecimalField(decimal_places=2)  # Product price
+    price = models.DecimalField(
+        decimal_places=2,
+        default=0,
+    )  # Product price
+    active = models.BooleanField(default=True)
     descriptions = models.TextField()  # Product description
     product_type = models.CharField(
         max_length=10,
@@ -67,6 +71,11 @@ class Product(models.Model):
     type_of_file = models.ForeignKey(
         "TypeOfFile", on_delete=models.CASCADE, null=True, blank=True
     )  # Type of file (e.g., PDF, ZIP) for digital products
+    store_owner = models.ForeignKey(
+        "AuthenticationSystem.CustomUser",
+        on_delete=models.CASCADE,
+        related_name="products",
+    )
 
     @classmethod
     def create_physical(cls, title, description, length, width, color, weight, price):

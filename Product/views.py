@@ -7,11 +7,13 @@ from rest_framework.decorators import (
     authentication_classes,
     permission_classes,
 )
+from uuid import UUID
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .models import Product, ProductImage, MainImage, ProductColor, TypeOfFile, Industry
+from AuthenticationSystem.models import CustomUser
 from .serializers import (
     ProductSerializerFull,
     ProductSerializerShow,
@@ -48,7 +50,10 @@ def products_sort_show(request):
         if str(product_type).lower() == "physical":
             # Filtering physical products by 'product_type' and 'industry'
             products_list = Product.objects.filter(
-                product_type=product_type, industry=industry, title__icontains=title
+                product_type=product_type,
+                industry=industry,
+                title__icontains=title,
+                active=True,
             )
             # Serializing the list of products and returning it in the response
             serialized_data = ProductSerializerShow(products_list, many=True)
@@ -182,13 +187,14 @@ def create_product(request):
 
     # Retrieve data from request
     data = request.data
+    user_owner = user
     product_title = data.get("product_title")
     product_price = Decimal(data.get("product_price", "0"))
     description = data.get("description", "")
     product_type = data.get("product_type")
     length = data.get("length")
     width = data.get("width")
-    color = data.get("color")
+    color_name = data.get("color")
     size = data.get("size")
     type_of_file = data.get("type_of_file")
 
@@ -198,7 +204,6 @@ def create_product(request):
             {"error": "product_title, product_price, and product_type are required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
-
     product_type = product_type.capitalize()
 
     if product_type == "Physical":
@@ -213,7 +218,7 @@ def create_product(request):
 
         # Ensure the color exists in the database
         try:
-            color = ProductColor.objects.get(name=color)
+            color = ProductColor.objects.get(name=color_name)
         except ProductColor.DoesNotExist:
             return Response(
                 {"error": "Invalid color"},
@@ -224,6 +229,7 @@ def create_product(request):
         product = Product.create_physical(
             title=product_title,
             price=product_price,
+            store_owner=user_owner,
             descriptions=description,
             length=length,
             width=width,
@@ -270,12 +276,50 @@ def create_product(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Save all uploaded images
-    for image in images:
-        ProductImage.objects.create(product=product, image=image)
-
-    # Set the first image as the main image
+    # Save the first image and set it as the main image
     first_image = ProductImage.objects.create(product=product, image=images[0])
     MainImage.objects.create(product=product, product_image=first_image)
 
+    # Save the rest of the uploaded images (excluding the first one)
+    for image in images[1:]:
+        ProductImage.objects.create(product=product, image=image)
+
     return Response(ProductSerializerFull(product).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+def show_products_by_store(request):
+    """
+    API endpoint to retrieve all products of a specific store owner.
+    Only users with user_type='store_owner' are considered valid store owners.
+    """
+    store_owner_id = request.query_params.get(
+        "store_owner_id"
+    )  # Retrieve store_owner_id from query parameters
+
+    if not store_owner_id:
+        return Response({"error": "store_owner_id is required."}, status=400)
+
+    store_owner = CustomUser.objects.filter(
+        id=store_owner_id, user_type="store_owner"
+    ).first()
+
+    if not store_owner:
+        return Response(
+            {"error": "No store owner found with the given ID."}, status=404
+        )
+
+    user = get_user_from_token(request)
+    if (user.user_type == "store_owner") and (user.id == UUID(store_owner_id)):
+        products_list = store_owner.products.all()
+
+    else:
+        products_list = store_owner.products.all().filter(active=True)
+
+    if not products_list.exists():
+        return Response(
+            {"error": "No products found for this store owner."}, status=404
+        )
+
+    serialized_products = ProductSerializerShow(products_list, many=True)
+    return Response({"products": serialized_products.data}, status=200)

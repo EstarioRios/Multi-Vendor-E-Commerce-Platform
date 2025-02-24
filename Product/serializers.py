@@ -41,6 +41,7 @@ class ProductSerializerShow(serializers.ModelSerializer):
             "id",  # Unique identifier for the product, used for referencing specific products
             "price",  # Product price, representing the cost of the item
             "main_image",  # Show only the main image
+            "active",
         ]
 
 
