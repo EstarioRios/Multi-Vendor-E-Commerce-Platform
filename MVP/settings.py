@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
     "Product",
+    "Document",
 ]
 
 REST_FRAMEWORK = {

@@ -175,9 +175,9 @@ def get_user_from_token(request):
 def create_product(request):
     # Extract user from token
     user, error_response = get_user_from_token(request)
+
     if error_response:
         return error_response
-
     # Ensure only store owners can create products
     if user.user_type != "store_owner":
         return Response(
@@ -314,7 +314,7 @@ def show_products_by_store(request):
         products_list = store_owner.products.all()
 
     else:
-        products_list = store_owner.products.all().filter(active=True)
+        products_list = store_owner.products.filter(active=True)
 
     if not products_list.exists():
         return Response(
@@ -323,3 +323,35 @@ def show_products_by_store(request):
 
     serialized_products = ProductSerializerShow(products_list, many=True)
     return Response({"products": serialized_products.data}, status=200)
+
+
+@api_view(["DELETE"])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def delete_product(request):
+    # Get the user from the token
+    user, error_response = get_user_from_token(request)
+
+    # If there is an error with authentication, return the error response
+    if error_response:
+        return error_response
+
+    # Check if the user's type is either 'store_owner' or 'admin'
+    if (user.user_type != "store_owner") and (user.user_type != "admin"):
+        return Response(
+            {"error": "Your user_type isn't suitable"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Get the product_id from the query parameters
+    request_data = request.query_params
+    product_id = request_data.get("product_id")
+
+    # Retrieve the product by its UUID
+    target_product = Product.objects.filter(id=UUID(product_id)).first()
+
+    # Delete the product from the database
+    target_product.delete()
+
+    # Return a successful response after deleting the product
+    return Response({"product deleted"}, status=status.HTTP_200_OK)

@@ -39,8 +39,7 @@ class Product(models.Model):
     )
     title = models.CharField(max_length=150)  # Product title
     price = models.DecimalField(
-        decimal_places=2,
-        default=0,
+        decimal_places=2, default=0, max_digits=10
     )  # Product price
     active = models.BooleanField(default=True)
     descriptions = models.TextField()  # Product description

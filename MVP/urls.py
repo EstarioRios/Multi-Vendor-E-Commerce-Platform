@@ -8,12 +8,12 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("Authentication/", include("AuthenticationSystem.urls")),
-    path("Product/", include("Product.urls")),
+    path("authentication/", include("AuthenticationSystem.urls")),
+    path("product/", include("Product.urls")),
+    path("document/", include("Document.urls")),
     path("token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
 ]
-
 
 
 if settings.DEBUG:
