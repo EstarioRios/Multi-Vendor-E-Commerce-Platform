@@ -11,6 +11,7 @@ class Blog(models.Model):
         Product, on_delete=models.CASCADE, related_name="blogs"
     )  # Related product
     content_file = models.FileField(upload_to="blog_content/")  # File for blog content
+    active = models.BooleanField(default=True)
 
     def __str__(self):
         return f"{self.title} for {self.product.title}"
