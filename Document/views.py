@@ -7,8 +7,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from Product.views import get_user_from_token
-from .models import Product, Blog
-from .serializers import BlogFullSerializer
+from .models import Product, Blog, OrderCard, Card, Comment
+from .serializers import (
+    BlogFullSerializer,
+    CommentSerializer,
+    CardSerializer,
+    OrderCardSerializer,
+)
 import magic
 import bleach
 
@@ -289,3 +294,282 @@ def blog_dependent_on_product(request):
     return Response(
         {"product_blogs": product_blogs_serialized.data}, status=status.HTTP_200_OK
     )
+
+
+@api_view(["GET"])  # Specifies that this view only accepts GET requests
+def show_all_blogs(request):
+    """
+    Retrieve a list of all blog posts.
+
+    Args:
+        request (HttpRequest): The request object.
+
+    Returns:
+        Response: A JSON response containing the list of all blogs.
+    """
+    # Retrieve all blog posts from the database
+    blogs_list = Blog.objects.filter(active=True)
+
+    # Serialize the list of blog posts
+    blogs_list_serialized = BlogFullSerializer(blogs_list, many=True)
+
+    # Return the serialized data with a 200 OK status
+    return Response(
+        {"blogs_list": blogs_list_serialized.data}, status=status.HTTP_200_OK
+    )
+
+
+@api_view(["GET"])  # Specifies that this view only accepts GET requests
+def show_comments_dependent_on_blog(request):
+    """
+    Retrieve all comments related to a specific blog post.
+
+    Args:
+        request (HttpRequest): The request object containing query parameters.
+
+    Returns:
+        Response: A JSON response containing the list of comments or an error message.
+    """
+    # Extract query parameters from the request
+    data = request.query_params
+
+    # Get the blog_id from query parameters
+    blog_id = data.get("blog_id")
+
+    # Check if blog_id is provided
+    if not blog_id:
+        return Response(
+            {"error": "blog_id is required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Retrieve the blog post with the given ID and ensure it is active
+    try:
+        blog = Blog.objects.filter(active=True, id=blog_id)
+    except Blog.DoesNotExist:
+        # If the blog does not exist, return a 404 Not Found response
+        return Response(
+            {"error": "Blog does not exist"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Retrieve all comments related to the blog post
+    comments = blog.comments.all()
+
+    # Serialize the comments
+    comments_serialized = CommentSerializer(comments, many=True)
+
+    # Return the serialized data with a 200 OK status
+    return Response({"comments": comments_serialized.data}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])  # Specifies that this view only accepts POST requests
+@permission_classes(
+    [IsAuthenticated]
+)  # Ensures that only authenticated users can access this view
+def create_comment(request):
+    """
+    Create a new comment on a blog post.
+
+    Args:
+        request (HttpRequest): The request object containing the comment data.
+
+    Returns:
+        Response: A JSON response indicating success or failure.
+    """
+    # Retrieve the user from the token
+    user, error_response = get_user_from_token(request)
+    if error_response:
+        # If there's an error in retrieving the user, return the error response
+        return Response(error_response)
+
+    # Extract data from the request
+    data = request.data
+    blog_id = data.get("blog_id")  # Get the blog_id from the request data
+    content = data.get("content")  # Get the comment content from the request data
+
+    # Validate required fields
+    if not all([blog_id, content]):
+        return Response(
+            {"error": "blog_id and content are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Retrieve the blog post
+    try:
+        blog = Blog.objects.get(id=blog_id)  # Get the blog post by ID
+    except Blog.DoesNotExist:
+        # If the blog does not exist, return a 404 Not Found response
+        return Response({"error": "Blog not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Create the comment
+    Comment.objects.create(content=content, blog=blog, user=user)
+
+    # Return a success response
+    return Response({"message": "Comment created"}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])  # Specifies that this view only accepts DELETE requests
+@permission_classes(
+    [IsAuthenticated]
+)  # Ensures that only authenticated users can access this view
+def delete_comment(request):
+    """
+    Delete a comment from a blog post.
+    Only the comment owner or an admin can delete the comment.
+
+    Args:
+        request (HttpRequest): The request object containing the comment data.
+
+    Returns:
+        Response: A JSON response indicating success or failure.
+    """
+    # Retrieve the user from the token
+    user, error_response = get_user_from_token(request)
+    if error_response:
+        # If there's an error in retrieving the user, return the error response
+        return Response(error_response)
+
+    # Extract data from the request
+    data = request.data
+    blog_id = data.get("blog_id")  # Get the blog_id from the request data
+
+    # Retrieve the blog post
+    blog = Blog.objects.filter(id=blog_id).first()
+    if not blog:
+        # If the blog does not exist, return a 404 Not Found response
+        return Response({"error": "Blog not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check if the user is the blog owner or an admin
+    if (user == blog.user) or (user.user_type == "admin"):
+        # Delete the blog post
+        blog.delete()
+        return Response(
+            {"message": "Comment deleted"}, status=status.HTTP_204_NO_CONTENT
+        )
+    else:
+        # If the user is not authorized, return a 403 Forbidden response
+        return Response(
+            {"error": "You do not have permission to delete this comment"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def add_product_to_cart(request):
+    """
+    Add a product to the user's shopping cart.
+    If the product already exists in the cart, increment the order_time.
+    If not, create a new order item in the cart.
+
+    Args:
+        request (HttpRequest): The request object containing product_id and order_time.
+
+    Returns:
+        Response: A JSON response indicating success or failure.
+    """
+    # Get the user from the token
+    user, response_error = get_user_from_token(request)
+    if response_error:
+        return Response(response_error)
+
+    # Extract data from the request
+    data = request.data
+    product_id = data.get("product_id")
+    order_time = data.get("order_time", 1)  # Default to 1 if not provided
+
+    # Validate required fields
+    if not product_id:
+        return Response(
+            {"error": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Check if the product exists
+    try:
+        product = Product.objects.get(id=product_id)
+    except Product.DoesNotExist:
+        return Response(
+            {"error": "Product does not exist"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Get or create the user's cart
+    cart, created = Card.objects.get_or_create(user=user)
+
+    # Check if the product is already in the cart
+    try:
+        order_item = OrderCard.objects.get(card=cart, product=product)
+        # If the product is already in the cart, increment the order_time
+        order_item.order_time += order_time
+        order_item.save()
+        message = "Product quantity updated in the cart."
+    except OrderCard.DoesNotExist:
+        # If the product is not in the cart, create a new order item
+        OrderCard.objects.create(card=cart, product=product, order_time=order_time)
+        message = "Product added to the cart."
+
+    # Return a success response
+    return Response({"message": message}, status=status.HTTP_200_OK)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def remove_product_from_cart(request):
+    """
+    Remove a product from the user's shopping cart.
+    If the product exists in the cart:
+      - If order_time > 1: decrement order_time
+      - If order_time == 1: delete the order item
+
+    Args:
+        request (HttpRequest): The request object containing product_id.
+
+    Returns:
+        Response: A JSON response indicating success or failure.
+    """
+    # Get the user from the token
+    user, response_error = get_user_from_token(request)
+    if response_error:
+        return Response(response_error)
+
+    # Extract data from the request
+    data = request.data
+    product_id = data.get("product_id")
+
+    # Validate required fields
+    if not product_id:
+        return Response(
+            {"error": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Check if the product exists
+    try:
+        product = Product.objects.get(id=product_id)
+    except Product.DoesNotExist:
+        return Response(
+            {"error": "Product does not exist"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Get the user's cart (return error if not exists)
+    try:
+        cart = Card.objects.get(user=user)
+    except Card.DoesNotExist:
+        return Response({"error": "Cart not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check if the product is in the cart
+    try:
+        order_item = OrderCard.objects.get(card=cart, product=product)
+
+        # Check order_time and update/delete accordingly
+        if order_item.order_time > 1:
+            order_item.order_time -= 1
+            order_item.save()
+            message = "Product quantity decreased in the cart."
+        else:
+            order_item.delete()
+            message = "Product removed from the cart."
+
+    except OrderCard.DoesNotExist:
+        return Response(
+            {"error": "Product not found in the cart"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    return Response({"message": message}, status=status.HTTP_200_OK)
