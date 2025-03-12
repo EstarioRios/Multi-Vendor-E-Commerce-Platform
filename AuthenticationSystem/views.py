@@ -181,8 +181,3 @@ def user_information(request):
     user = request.user
     user_data = CustomUserSerializer_Full(user).data
     return Response({"user_data": user_data})
-
-
-@api_view(["GET"])
-def stores_list(request):
-    industry = request.get()

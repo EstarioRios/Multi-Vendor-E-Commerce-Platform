@@ -19,6 +19,7 @@ from .serializers import (
     ProductSerializerShow,
     IndustrySerializer,
 )
+from django.core import cache
 
 
 @api_view(["GET"])
@@ -29,6 +30,14 @@ def industries_list_show(request):
     """
     industies_list = Industry.objects.all()
     serialized_data = IndustrySerializer(industies_list, many=True)
+    cache_key = "industries_list"  # A key for this cache
+    cached_data = cache.get(cache_key)  # Find cached_data deppent on cache_key
+    if cached_data:
+        return Response({"industries": cached_data}, status=200)
+
+    cache.set(
+        cache_key, serialized_data.data, timeout=600
+    )  # Set a cache with cache_key
 
     # Returns the serialized data of all industries with a status code 200 (OK)
     return Response({"industries": serialized_data.data}, status=200)
@@ -47,7 +56,9 @@ def products_sort_show(request):
     title = request.query_params.get("title")
 
     if all([product_type, industry, title]):
+
         if str(product_type).lower() == "physical":
+
             # Filtering physical products by 'product_type' and 'industry'
             products_list = Product.objects.filter(
                 product_type=product_type,
@@ -55,6 +66,7 @@ def products_sort_show(request):
                 title__icontains=title,
                 active=True,
             )
+
             # Serializing the list of products and returning it in the response
             serialized_data = ProductSerializerShow(products_list, many=True)
             return Response({"products": serialized_data.data}, status=200)

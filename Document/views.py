@@ -3,6 +3,7 @@ from rest_framework.decorators import (
     authentication_classes,
     permission_classes,
 )
+from django.core import cache
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -132,6 +133,10 @@ def create_blog(request):
             ),  # Save the sanitized content
         )
 
+        # Clear the cache for related views
+        cache.delete("all_blogs_cache")
+        cache.delete(f"product_blogs_cache_{product_id}")
+
         # Serialize the created blog post and return it in the response
         serialized_blog = BlogFullSerializer(blog)
         return Response(serialized_blog.data, status=status.HTTP_201_CREATED)
@@ -176,10 +181,55 @@ def delete_blog(request):
         # Delete the blog post
         blog = target_blog.delete()
 
+        # Clear the cache for related views
+        cache.delete("all_blogs_cache")
+        cache.delete(f"product_blogs_cache_{blog_id}")
+
         # Serialize the deleted blog post (optional, depending on your use case)
         serialized_blog = BlogFullSerializer(blog)
         # Return the serialized data with a 200 OK status
         return Response(serialized_blog.data, status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_cart(request):
+    """
+    Retrieve the products in the user's shopping cart.
+
+    Args:
+        request (HttpRequest): The request object.
+
+    Returns:
+        Response: A JSON response containing the list of products in the cart.
+    """
+    # Get the user from the token
+    user, response_error = get_user_from_token(request)
+    if response_error:
+        return Response(response_error)
+
+    # Define cache key
+    cache_key = f"user_cart_{user.id}"
+
+    # Check if data exists in the cache
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response({"cart": cached_data}, status=status.HTTP_200_OK)
+
+    # Get the user's cart
+    try:
+        cart = Card.objects.get(user=user)
+    except Card.DoesNotExist:
+        return Response({"error": "Cart not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Get all order items in the cart
+    order_items = OrderCard.objects.filter(card=cart)
+    serialized_order_items = OrderCardSerializer(order_items, many=True)
+
+    # Cache the serialized data for 10 minutes (600 seconds)
+    cache.set(cache_key, serialized_order_items.data, timeout=600)
+
+    return Response({"cart": serialized_order_items.data}, status=status.HTTP_200_OK)
 
 
 @api_view(["PUT"])  # Specifies that this view only accepts PUT requests
@@ -244,6 +294,10 @@ def update_blog(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Clear the cache for related views
+        cache.delete("all_blogs_cache")
+        cache.delete(f"product_blogs_cache_{product_id}")
+
         # Update the blog post with the new data
         Blog.objects.filter(id=product_id).update(
             active=active,
@@ -258,7 +312,7 @@ def update_blog(request):
 @api_view(["GET"])
 def blog_dependent_on_product(request):
     """
-    Retrieve all blogs related to a specific product.
+    Retrieve all blogs related to a specific product with caching.
 
     Args:
         request (HttpRequest): The request object containing query parameters.
@@ -266,31 +320,33 @@ def blog_dependent_on_product(request):
     Returns:
         Response: A JSON response containing the list of blogs or an error message.
     """
-    # Get the product_id from query parameters
     product_id = request.query_params.get("product_id")
 
-    # Check if product_id is provided
     if not product_id:
         return Response(
             {"error": "product id is required"}, status=status.HTTP_400_BAD_REQUEST
         )
 
-    # Retrieve the product
+    cache_key = f"product_blogs_{product_id}"
+    cached_data = cache.get(cache_key)
+
+    if cached_data:
+        return Response({"product_blogs": cached_data}, status=status.HTTP_200_OK)
+
     product = Product.objects.filter(id=product_id).first()
 
-    # Check if the product exists
     if not product:
         return Response(
             {"error": "Product does not exist"}, status=status.HTTP_404_NOT_FOUND
         )
 
-    # Retrieve all blogs related to the product
     product_blogs = product.blogs.all()
-
-    # Serialize the blogs
     product_blogs_serialized = BlogFullSerializer(product_blogs, many=True)
 
-    # Return the serialized data
+    cache.set(
+        cache_key, product_blogs_serialized.data, timeout=600
+    )  # Cache for 10 minutes
+
     return Response(
         {"product_blogs": product_blogs_serialized.data}, status=status.HTTP_200_OK
     )
@@ -299,7 +355,7 @@ def blog_dependent_on_product(request):
 @api_view(["GET"])  # Specifies that this view only accepts GET requests
 def show_all_blogs(request):
     """
-    Retrieve a list of all blog posts.
+    Retrieve a list of all active blog posts, utilizing caching for optimization.
 
     Args:
         request (HttpRequest): The request object.
@@ -307,11 +363,22 @@ def show_all_blogs(request):
     Returns:
         Response: A JSON response containing the list of all blogs.
     """
-    # Retrieve all blog posts from the database
+    # Define cache key
+    cache_key = "blogs_list"
+
+    # Check if data exists in the cache
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response({"blogs_list": cached_data}, status=status.HTTP_200_OK)
+
+    # Retrieve all active blog posts from the database
     blogs_list = Blog.objects.filter(active=True)
 
     # Serialize the list of blog posts
     blogs_list_serialized = BlogFullSerializer(blogs_list, many=True)
+
+    # Store serialized data in cache with a timeout of 10 minutes (600 seconds)
+    cache.set(cache_key, blogs_list_serialized.data, timeout=600)
 
     # Return the serialized data with a 200 OK status
     return Response(
@@ -322,7 +389,7 @@ def show_all_blogs(request):
 @api_view(["GET"])  # Specifies that this view only accepts GET requests
 def show_comments_dependent_on_blog(request):
     """
-    Retrieve all comments related to a specific blog post.
+    Retrieve all comments related to a specific blog post with caching.
 
     Args:
         request (HttpRequest): The request object containing query parameters.
@@ -342,9 +409,16 @@ def show_comments_dependent_on_blog(request):
             {"error": "blog_id is required"}, status=status.HTTP_400_BAD_REQUEST
         )
 
+    # Define cache key
+    cache_key = f"blog_comments_{blog_id}"
+    cached_comments = cache.get(cache_key)
+
+    if cached_comments:
+        return Response({"comments": cached_comments}, status=status.HTTP_200_OK)
+
     # Retrieve the blog post with the given ID and ensure it is active
     try:
-        blog = Blog.objects.filter(active=True, id=blog_id)
+        blog = Blog.objects.get(active=True, id=blog_id)
     except Blog.DoesNotExist:
         # If the blog does not exist, return a 404 Not Found response
         return Response(
@@ -357,14 +431,15 @@ def show_comments_dependent_on_blog(request):
     # Serialize the comments
     comments_serialized = CommentSerializer(comments, many=True)
 
+    # Cache the serialized data for 10 minutes (600 seconds)
+    cache.set(cache_key, comments_serialized.data, timeout=600)
+
     # Return the serialized data with a 200 OK status
     return Response({"comments": comments_serialized.data}, status=status.HTTP_200_OK)
 
 
-@api_view(["POST"])  # Specifies that this view only accepts POST requests
-@permission_classes(
-    [IsAuthenticated]
-)  # Ensures that only authenticated users can access this view
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def create_comment(request):
     """
     Create a new comment on a blog post.
@@ -378,39 +453,34 @@ def create_comment(request):
     # Retrieve the user from the token
     user, error_response = get_user_from_token(request)
     if error_response:
-        # If there's an error in retrieving the user, return the error response
         return Response(error_response)
 
-    # Extract data from the request
     data = request.data
-    blog_id = data.get("blog_id")  # Get the blog_id from the request data
-    content = data.get("content")  # Get the comment content from the request data
+    blog_id = data.get("blog_id")
+    content = data.get("content")
 
-    # Validate required fields
     if not all([blog_id, content]):
         return Response(
             {"error": "blog_id and content are required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Retrieve the blog post
     try:
-        blog = Blog.objects.get(id=blog_id)  # Get the blog post by ID
+        blog = Blog.objects.get(id=blog_id)
     except Blog.DoesNotExist:
-        # If the blog does not exist, return a 404 Not Found response
         return Response({"error": "Blog not found"}, status=status.HTTP_404_NOT_FOUND)
 
     # Create the comment
     Comment.objects.create(content=content, blog=blog, user=user)
 
-    # Return a success response
+    # Clear related comments cache
+    cache.delete(f"blog_comments_{blog_id}")  # Added cache invalidation
+
     return Response({"message": "Comment created"}, status=status.HTTP_201_CREATED)
 
 
-@api_view(["DELETE"])  # Specifies that this view only accepts DELETE requests
-@permission_classes(
-    [IsAuthenticated]
-)  # Ensures that only authenticated users can access this view
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
 def delete_comment(request):
     """
     Delete a comment from a blog post.
@@ -425,28 +495,25 @@ def delete_comment(request):
     # Retrieve the user from the token
     user, error_response = get_user_from_token(request)
     if error_response:
-        # If there's an error in retrieving the user, return the error response
         return Response(error_response)
 
-    # Extract data from the request
     data = request.data
-    blog_id = data.get("blog_id")  # Get the blog_id from the request data
+    blog_id = data.get("blog_id")
 
-    # Retrieve the blog post
     blog = Blog.objects.filter(id=blog_id).first()
     if not blog:
-        # If the blog does not exist, return a 404 Not Found response
         return Response({"error": "Blog not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    # Check if the user is the blog owner or an admin
     if (user == blog.user) or (user.user_type == "admin"):
-        # Delete the blog post
         blog.delete()
+
+        # Clear related comments cache
+        cache.delete(f"blog_comments_{blog_id}")  # Added line
+
         return Response(
             {"message": "Comment deleted"}, status=status.HTTP_204_NO_CONTENT
         )
     else:
-        # If the user is not authorized, return a 403 Forbidden response
         return Response(
             {"error": "You do not have permission to delete this comment"},
             status=status.HTTP_403_FORBIDDEN,
@@ -475,15 +542,13 @@ def add_product_to_cart(request):
     # Extract data from the request
     data = request.data
     product_id = data.get("product_id")
-    order_time = data.get("order_time", 1)  # Default to 1 if not provided
+    order_time = data.get("order_time", 1)
 
-    # Validate required fields
     if not product_id:
         return Response(
             {"error": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST
         )
 
-    # Check if the product exists
     try:
         product = Product.objects.get(id=product_id)
     except Product.DoesNotExist:
@@ -491,22 +556,20 @@ def add_product_to_cart(request):
             {"error": "Product does not exist"}, status=status.HTTP_404_NOT_FOUND
         )
 
-    # Get or create the user's cart
     cart, created = Card.objects.get_or_create(user=user)
 
-    # Check if the product is already in the cart
     try:
         order_item = OrderCard.objects.get(card=cart, product=product)
-        # If the product is already in the cart, increment the order_time
         order_item.order_time += order_time
         order_item.save()
         message = "Product quantity updated in the cart."
     except OrderCard.DoesNotExist:
-        # If the product is not in the cart, create a new order item
         OrderCard.objects.create(card=cart, product=product, order_time=order_time)
         message = "Product added to the cart."
 
-    # Return a success response
+    # Clear user's cart cache
+    cache.delete(f"user_cart_{user.id}")  # Added cache invalidation
+
     return Response({"message": message}, status=status.HTTP_200_OK)
 
 
@@ -530,17 +593,14 @@ def remove_product_from_cart(request):
     if response_error:
         return Response(response_error)
 
-    # Extract data from the request
     data = request.data
     product_id = data.get("product_id")
 
-    # Validate required fields
     if not product_id:
         return Response(
             {"error": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST
         )
 
-    # Check if the product exists
     try:
         product = Product.objects.get(id=product_id)
     except Product.DoesNotExist:
@@ -548,17 +608,14 @@ def remove_product_from_cart(request):
             {"error": "Product does not exist"}, status=status.HTTP_404_NOT_FOUND
         )
 
-    # Get the user's cart (return error if not exists)
     try:
         cart = Card.objects.get(user=user)
     except Card.DoesNotExist:
         return Response({"error": "Cart not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    # Check if the product is in the cart
     try:
         order_item = OrderCard.objects.get(card=cart, product=product)
 
-        # Check order_time and update/delete accordingly
         if order_item.order_time > 1:
             order_item.order_time -= 1
             order_item.save()
@@ -571,5 +628,8 @@ def remove_product_from_cart(request):
         return Response(
             {"error": "Product not found in the cart"}, status=status.HTTP_404_NOT_FOUND
         )
+
+    # Clear user's cart cache
+    cache.delete(f"user_cart_{user.id}")  # Added cache invalidation
 
     return Response({"message": message}, status=status.HTTP_200_OK)
