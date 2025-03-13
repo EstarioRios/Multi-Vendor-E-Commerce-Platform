@@ -50,85 +50,79 @@ def products_sort_show(request):
     The query parameters 'product_type' and 'industry' are required.
     Returns a JSON response with the filtered list of products.
     """
-    # Extracting the 'product_type' and 'industry' from the query parameters
+    # Extract query parameters
     product_type = request.query_params.get("product_type")
     industry = request.query_params.get("industry")
     title = request.query_params.get("title")
+    type_of_file = request.query_params.get("type_of_file")
 
+    # Generate unique cache key based on parameters
+    cache_key = f"products_sort_{str(product_type).lower()}_{industry}_{title or ''}_{type_of_file or ''}"
+
+    # Check cache first
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response({"products": cached_data}, status=200)
+
+    # Original logic remains unchanged below
     if all([product_type, industry, title]):
-
         if str(product_type).lower() == "physical":
-
-            # Filtering physical products by 'product_type' and 'industry'
             products_list = Product.objects.filter(
                 product_type=product_type,
                 industry=industry,
                 title__icontains=title,
                 active=True,
             )
-
-            # Serializing the list of products and returning it in the response
             serialized_data = ProductSerializerShow(products_list, many=True)
+            # Cache results for 10 minutes
+            cache.set(cache_key, serialized_data.data, timeout=600)
             return Response({"products": serialized_data.data}, status=200)
 
         elif str(product_type).lower() == "digital":
-            # Filtering digital products by 'product_type' and 'industry'
-            type_of_file = request.query_params.get("type_of_file")
-
             products_list = Product.objects.filter(
                 product_type=product_type,
                 industry=industry,
                 type_of_file=type_of_file,
                 title__icontains=title,
             )
-            # Serializing the list of products and returning it in the response
             serialized_data = ProductSerializerShow(products_list, many=True)
+            # Cache results for 10 minutes
+            cache.set(cache_key, serialized_data.data, timeout=600)
             return Response({"products": serialized_data.data}, status=200)
 
-        # If the product_type is neither 'physical' nor 'digital'
         else:
             return Response(
-                {
-                    "error": "Invalid 'product_type' provided. Must be 'Physical' or 'Digital'."
-                },
+                {"error": "Invalid 'product_type'. Must be 'Physical' or 'Digital'."},
                 status=400,
             )
 
-    # Checking if both 'product_type' and 'industry' are provided
     elif product_type and industry:
-        # Handling different types of products based on 'product_type'
         if str(product_type).lower() == "physical":
-            # Filtering physical products by 'product_type' and 'industry'
             products_list = Product.objects.filter(
                 product_type=product_type, industry=industry
             )
-            # Serializing the list of products and returning it in the response
             serialized_data = ProductSerializerShow(products_list, many=True)
+            # Cache results for 10 minutes
+            cache.set(cache_key, serialized_data.data, timeout=600)
             return Response({"products": serialized_data.data}, status=200)
 
         elif str(product_type).lower() == "digital":
-            # Filtering digital products by 'product_type' and 'industry'
-            type_of_file = request.query_params.get("type_of_file")
-
             products_list = Product.objects.filter(
                 product_type=product_type,
                 industry=industry,
                 type_of_file=type_of_file,
             )
-            # Serializing the list of products and returning it in the response
             serialized_data = ProductSerializerShow(products_list, many=True)
+            # Cache results for 10 minutes
+            cache.set(cache_key, serialized_data.data, timeout=600)
             return Response({"products": serialized_data.data}, status=200)
 
-        # If the product_type is neither 'physical' nor 'digital'
         else:
             return Response(
-                {
-                    "error": "Invalid 'product_type' provided. Must be 'Physical' or 'Digital'."
-                },
+                {"error": "Invalid 'product_type'. Must be 'Physical' or 'Digital'."},
                 status=400,
             )
     else:
-        # If any of the required parameters ('product_type' or 'industry') are missing
         return Response(
             {"error": "'product_type' and 'industry' are required parameters."},
             status=400,
@@ -142,6 +136,14 @@ def product_detail(request):
     )  # Retrieves product_id from query parameters
 
     if product_id:
+        # Generate cache key
+        cache_key = f"product_detail_{product_id}"
+
+        # Check cache first
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response({"product_detail": cached_data}, status=200)
+
         product_detail = Product.objects.filter(
             id=product_id
         ).first()  # Fetches the product by ID
@@ -149,6 +151,10 @@ def product_detail(request):
             product_detail_serialized = ProductSerializerFull(
                 product_detail
             )  # Serializes product data
+
+            # Cache the serialized data for 10 minutes
+            cache.set(cache_key, product_detail_serialized.data, timeout=600)
+
             return Response(
                 {"product_detail": product_detail_serialized.data}, status=200
             )  # Returns product details
@@ -220,7 +226,7 @@ def create_product(request):
 
     if product_type == "Physical":
         # Validate required fields for physical products
-        if not all([description, length, width, color]):
+        if not all([description, length, width, color_name]):
             return Response(
                 {
                     "error": "description, length, width, color are required for physical products"
@@ -296,6 +302,12 @@ def create_product(request):
     for image in images[1:]:
         ProductImage.objects.create(product=product, image=image)
 
+    # Clear cache for product-related views
+    cache.delete("all_products_cache")  # Clear cache for all products
+    cache.delete(
+        f"product_detail_{product.id}"
+    )  # Clear cache for this product's detail
+
     return Response(ProductSerializerFull(product).data, status=status.HTTP_201_CREATED)
 
 
@@ -312,6 +324,14 @@ def show_products_by_store(request):
     if not store_owner_id:
         return Response({"error": "store_owner_id is required."}, status=400)
 
+    # Generate cache key
+    cache_key = f"store_products_{store_owner_id}"
+
+    # Check cache first
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return Response({"products": cached_data}, status=200)
+
     store_owner = CustomUser.objects.filter(
         id=store_owner_id, user_type="store_owner"
     ).first()
@@ -324,7 +344,6 @@ def show_products_by_store(request):
     user = get_user_from_token(request)
     if (user.user_type == "store_owner") and (user.id == UUID(store_owner_id)):
         products_list = store_owner.products.all()
-
     else:
         products_list = store_owner.products.filter(active=True)
 
@@ -334,6 +353,10 @@ def show_products_by_store(request):
         )
 
     serialized_products = ProductSerializerShow(products_list, many=True)
+
+    # Cache the serialized data for 10 minutes
+    cache.set(cache_key, serialized_products.data, timeout=600)
+
     return Response({"products": serialized_products.data}, status=200)
 
 
@@ -364,6 +387,15 @@ def delete_product(request):
 
     # Delete the product from the database
     target_product.delete()
+
+    # Clear cache for product-related views
+    cache.delete("all_products_cache")  # Clear cache for all products
+    cache.delete(
+        f"product_detail_{product_id}"
+    )  # Clear cache for this product's detail
+    cache.delete(
+        f"store_products_{user.id}"
+    )  # Clear cache for the store owner's products
 
     # Return a successful response after deleting the product
     return Response({"product deleted"}, status=status.HTTP_200_OK)
