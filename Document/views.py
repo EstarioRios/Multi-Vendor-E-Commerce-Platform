@@ -15,6 +15,7 @@ from .serializers import (
     CardSerializer,
     OrderCardSerializer,
 )
+from AI_notAPP.connect_to_GPT import comment_ban_GPT
 import magic
 import bleach
 
@@ -476,7 +477,14 @@ def create_comment(request):
     # Clear related comments cache
     cache.delete(f"blog_comments_{blog_id}")  # Added cache invalidation
 
-    return Response({"message": "Comment created"}, status=status.HTTP_201_CREATED)
+    is_comment_ok = comment_ban_GPT(request=content)
+    if is_comment_ok == True:
+        return Response({"message": "Comment created"}, status=status.HTTP_201_CREATED)
+    else:
+        return Response(
+            {"message": "Your Comment was not ok"},
+            status=status.HTTP_406_NOT_ACCEPTABLE,
+        )
 
 
 @api_view(["DELETE"])

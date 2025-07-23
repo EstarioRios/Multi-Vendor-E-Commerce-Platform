@@ -1,7 +1,7 @@
 from openai import OpenAI
 
 
-async def comment_ban_GPT(request):
+def comment_ban_GPT(request):
     client = OpenAI(api_key="", base_url="https://api.gapgpt.app/v1")
     response = client.chat.completions.create(
         model="gpt-4o",
